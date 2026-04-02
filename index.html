@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ShopSync — Shopify Product Importer</title>
+<style>
+/* ── Reset & Base ── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F4F4F2;color:#0F0F0F;height:100vh;overflow:hidden;display:flex}
+input,select,button,textarea{font-family:inherit}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#D0D0CE;border-radius:4px}
+
+/* ── Colors ── */
+:root{
+  --lime:#C8FF00;--lime-d:#a8d600;
+  --ink:#0F0F0F;--ink2:#1A1A1A;--ink3:#2a2a2a;
+  --smoke:#F4F4F2;--smoke2:#EBEBEA;--smoke3:#E0E0DE;
+  --mute:#6B6B6B;--mute-l:#9B9B9B;
+  --red:#ef4444;--amber:#f59e0b;--green:#22c55e;
+}
+
+/* ── Layout ── */
+#sidebar{width:220px;background:var(--ink);display:flex;flex-direction:column;height:100vh;flex-shrink:0}
+#main{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-width:0}
+#progress-panel{width:260px;background:#fff;border-left:1px solid var(--smoke3);height:100vh;overflow-y:auto;flex-shrink:0;display:none}
+#progress-panel.show{display:block}
+
+/* ── Sidebar ── */
+.logo{padding:24px 20px 16px;display:flex;align-items:center;gap:10px}
+.logo-icon{width:32px;height:32px;background:var(--lime);border-radius:10px;display:flex;align-items:center;justify-content:center}
+.logo-text{font-size:18px;font-weight:700;color:#fff}.logo-text span{color:var(--lime)}
+.logo-sub{font-size:11px;color:var(--mute);margin-top:2px;padding-left:42px}
+.nav{padding:0 12px;flex:1}
+.nav-label{font-size:10px;color:var(--mute);text-transform:uppercase;letter-spacing:.1em;padding:0 12px;margin-bottom:8px}
+.nav-item{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:none;background:none;color:var(--mute-l);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;text-align:left;margin-bottom:4px}
+.nav-item:hover{background:var(--ink2);color:#fff}
+.nav-item.active{background:var(--lime);color:var(--ink);font-weight:600}
+.nav-badge{margin-left:auto;font-size:10px;padding:2px 6px;border-radius:20px;font-weight:700;background:var(--ink2);color:var(--lime)}
+.nav-item.active .nav-badge{background:var(--ink);color:var(--lime)}
+.stats-box{margin:0 12px 20px;background:var(--ink2);border-radius:16px;padding:14px}
+.stats-label{font-size:10px;color:var(--mute);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.stat-row:last-child{margin-bottom:0}
+.stat-name{font-size:12px;color:var(--mute-l)}
+.stat-val{font-size:14px;font-weight:700}
+
+/* ── Topbar ── */
+#topbar{background:#fff;border-bottom:1px solid var(--smoke2);padding:14px 32px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.page-title{font-size:20px;font-weight:600;letter-spacing:-.3px}
+.page-sub{font-size:12px;color:var(--mute);margin-top:2px}
+.conn-badge{display:flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;border-radius:20px;font-weight:500}
+.conn-badge.ok{background:rgba(200,255,0,.15);color:var(--lime-d)}
+.conn-badge.err{background:#fef2f2;color:var(--red)}
+.conn-dot{width:6px;height:6px;border-radius:50%}
+.conn-badge.ok .conn-dot{background:var(--lime-d)}
+.conn-badge.err .conn-dot{background:var(--red)}
+.topbar-icon{width:32px;height:32px;background:var(--ink);border-radius:50%;display:flex;align-items:center;justify-content:center;margin-left:10px}
+
+/* ── Content ── */
+#content{padding:24px 32px 40px;max-width:900px}
+.tab-pane{display:none;animation:fadeUp .3s ease}
+.tab-pane.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Cards ── */
+.card{background:#fff;border-radius:20px;border:1px solid var(--smoke2);margin-bottom:16px}
+.card-body{padding:24px}
+.sec-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px}
+.sec-icon{width:36px;height:36px;background:rgba(200,255,0,.1);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sec-title{font-size:15px;font-weight:600;margin-left:12px}
+.sec-desc{font-size:12px;color:var(--mute);margin-top:2px;margin-left:12px}
+.sec-left{display:flex;align-items:center}
+
+/* ── Form ── */
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+.field-label{display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin-bottom:6px}
+.field-hint{font-size:11px;color:var(--mute);margin-top:4px}
+input[type=text],input[type=password],select{width:100%;border:1px solid var(--smoke3);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--ink);background:var(--smoke);outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus{border-color:var(--lime-d);box-shadow:0 0 0 3px rgba(200,255,0,.15)}
+.divider{border:none;border-top:1px solid var(--smoke2);margin:20px 0}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:12px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:var(--lime);color:var(--ink)}
+.btn-primary:hover:not(:disabled){background:var(--lime-d)}
+.btn-dark{background:var(--ink);color:#fff}
+.btn-dark:hover:not(:disabled){background:var(--ink2)}
+.btn-ghost{background:var(--smoke);border:1px solid var(--smoke3);color:var(--mute)}
+.btn-ghost:hover:not(:disabled){border-color:var(--mute-l);color:var(--ink)}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:10px}
+.btn-danger{background:#fef2f2;border:1px solid #fecaca;color:var(--red)}
+.spinner{width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Info banner ── */
+.banner{display:flex;gap:12px;padding:14px;background:rgba(200,255,0,.1);border:1px solid rgba(200,255,0,.25);border-radius:16px;margin-bottom:16px}
+.banner-text{font-size:13px;line-height:1.5}
+.banner-text strong{font-weight:600}
+code{background:var(--smoke2);padding:2px 5px;border-radius:5px;font-size:11px;font-family:'DM Mono','Courier New',monospace}
+
+/* ── Step cards ── */
+.step-card{display:flex;gap:12px;padding:12px;background:var(--smoke);border-radius:12px}
+.step-num{width:24px;height:24px;background:var(--lime);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--ink);flex-shrink:0;margin-top:2px}
+.step-t{font-size:13px;font-weight:600}
+.step-d{font-size:11px;color:var(--mute);margin-top:2px}
+
+/* ── Collection rows ── */
+.col-row{display:flex;gap:10px;align-items:flex-end;padding:14px;background:var(--smoke);border-radius:16px;border:1px solid var(--smoke2);margin-bottom:8px;transition:border-color .15s}
+.col-row:hover{border-color:var(--smoke3)}
+.row-num{width:24px;height:24px;background:var(--ink);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--lime);flex-shrink:0;margin-bottom:2px}
+.row-field{display:flex;flex-direction:column}
+.row-field.grow{flex:1}
+.row-field.w36{width:140px;flex-shrink:0}
+.row-field.w40{width:160px;flex-shrink:0}
+.row-input{border:1px solid var(--smoke3);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--ink);background:#fff;outline:none;transition:border-color .15s;width:100%}
+.row-input:focus{border-color:var(--lime-d)}
+.row-del{padding:8px;border:none;background:none;cursor:pointer;color:var(--mute-l);border-radius:10px;transition:all .15s;margin-bottom:2px;opacity:0}
+.col-row:hover .row-del{opacity:1}
+.row-del:hover{color:var(--red);background:#fef2f2}
+.add-row-btn{width:100%;padding:10px;border:2px dashed var(--smoke3);border-radius:14px;background:none;color:var(--mute);font-size:12px;cursor:pointer;transition:all .15s;margin-top:4px}
+.add-row-btn:hover{border-color:var(--lime);color:var(--lime-d);background:rgba(200,255,0,.05)}
+
+/* ── Status guide ── */
+.status-card{padding:16px;border-radius:14px}
+.status-card.active-s{border:2px solid var(--lime);background:rgba(200,255,0,.05)}
+.status-card.plain{border:1px solid var(--smoke3)}
+.status-card-t{font-size:13px;font-weight:600}
+.status-card-d{font-size:12px;color:var(--mute);margin-top:6px;line-height:1.5}
+
+/* ── Import bar ── */
+.import-bar{background:#fff;border-radius:20px;border:1px solid var(--smoke2);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.import-bar-t{font-size:15px;font-weight:600}
+.import-bar-d{font-size:12px;color:var(--mute);margin-top:2px}
+.btn-lg{padding:12px 28px;font-size:14px;border-radius:14px}
+
+/* ── Progress bars in import bar ── */
+.prog-row{margin-bottom:10px}
+.prog-row:last-child{margin-bottom:0}
+.prog-info{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
+.prog-name{font-weight:600}
+.prog-count{color:var(--mute)}
+.prog-track{height:6px;background:var(--smoke2);border-radius:3px;overflow:hidden}
+.prog-fill{height:100%;border-radius:3px;background:var(--lime);transition:width .4s ease;box-shadow:0 0 6px rgba(200,255,0,.4)}
+
+/* ── Summary cards ── */
+.summary{display:none;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.summary.show{display:grid}
+.sum-card{border-radius:20px;padding:20px}
+.sum-card.green{background:var(--lime)}
+.sum-card.red{background:#fee2e2}
+.sum-card.dark{background:var(--ink)}
+.sum-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.sum-card.green .sum-label{color:rgba(0,0,0,.5)}
+.sum-card.red .sum-label{color:#f87171}
+.sum-card.dark .sum-label{color:var(--mute)}
+.sum-val{font-size:36px;font-weight:700;margin-top:4px}
+.sum-card.green .sum-val{color:var(--ink)}
+.sum-card.red .sum-val{color:#dc2626}
+.sum-card.dark .sum-val{color:var(--lime)}
+
+/* ── Failed panel ── */
+.failed-panel{display:none}
+.failed-panel.show{display:block}
+.failed-item{display:flex;gap:10px;padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;margin-bottom:6px}
+.failed-url{font-size:11px;font-family:'DM Mono','Courier New',monospace;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.failed-meta{font-size:10px;color:var(--mute);margin-top:2px}
+.failed-warn{padding:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:12px;color:#92400e;margin-top:10px}
+
+/* ── Console ── */
+.console-wrap{background:#0F0F0F;border-radius:20px;border:1px solid var(--smoke2);overflow:hidden}
+.console-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--ink2);border-bottom:1px solid var(--ink3)}
+.console-live{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--mute)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--ink3)}
+.live-dot.active{background:var(--lime);animation:blink 1.2s ease infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.console-clear{font-size:11px;color:var(--mute);background:none;border:none;cursor:pointer;font-family:inherit}
+.console-clear:hover{color:#fff}
+.console-out{height:300px;overflow-y:auto;padding:16px;font-family:'DM Mono','Courier New',monospace;font-size:12px;line-height:1.6}
+.log-line{padding:1px 0}
+.log-info{color:#6B6B6B}
+.log-success{color:#C8FF00}
+.log-error{color:#f87171}
+.log-warn{color:#fbbf24}
+.log-section{color:#fff;font-weight:600;border-top:1px solid #2a2a2a;padding-top:6px;margin-top:4px}
+.log-done{color:#C8FF00;font-weight:600}
+.log-time{color:#3a3a3a;margin-right:8px;user-select:none}
+
+/* ── Progress panel ── */
+.pp-head{padding:16px 20px 12px;border-bottom:1px solid var(--smoke2);display:flex;align-items:center;justify-content:space-between}
+.pp-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--mute)}
+.pp-live{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--lime-d)}
+.pp-body{padding:16px 20px}
+.ring-wrap{position:relative;width:64px;height:64px;flex-shrink:0}
+.ring-info{flex:1}
+.ring-num{font-size:24px;font-weight:700}
+.ring-sub{font-size:12px;color:var(--mute);margin-top:2px}
+.ring-tags{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.tag{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600}
+.tag.green{background:rgba(200,255,0,.15);color:var(--lime-d)}
+.tag.red{background:#fee2e2;color:#dc2626}
+.pp-col{margin-bottom:12px}
+.pp-col-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.pp-col-name{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;flex:1;min-width:0}
+.pp-col-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pp-col-count{font-size:11px;color:var(--mute);font-family:'DM Mono','Courier New',monospace;margin-left:4px}
+.pp-track{height:8px;background:var(--smoke2);border-radius:4px;overflow:hidden}
+.pp-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.pp-fill.running{background:linear-gradient(90deg,#C8FF00 0%,#E8FF80 40%,#C8FF00 60%,#C8FF00 100%);background-size:200% 100%;animation:shimmer 1.8s linear infinite}
+.pp-fill.done{background:var(--lime)}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.pp-pct{font-size:10px;color:var(--mute);margin-top:3px;display:flex;justify-content:space-between}
+.pp-pct .done-text{color:var(--lime-d);font-weight:600}
+.col-spinner{width:12px;height:12px;border:2px solid var(--lime);border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+.col-check{width:14px;height:14px;background:var(--lime);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.last-box{padding:12px;background:rgba(200,255,0,.1);border:1px solid rgba(200,255,0,.2);border-radius:12px;margin-top:8px}
+.last-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin-bottom:4px}
+.last-title{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.last-meta{display:flex;align-items:center;gap:8px;margin-top:4px}
+.last-price{font-size:11px;font-weight:700;color:var(--lime-d);font-family:'DM Mono','Courier New',monospace}
+.last-was{font-size:11px;color:var(--mute);text-decoration:line-through;font-family:'DM Mono','Courier New',monospace}
+.complete-box{padding:16px;background:var(--ink);border-radius:16px;text-align:center;margin-top:12px}
+.complete-icon{width:40px;height:40px;background:var(--lime);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 8px}
+.complete-t{color:#fff;font-size:13px;font-weight:600}
+.complete-d{color:var(--mute);font-size:11px;margin-top:3px}
+
+/* ── SVG icons ── */
+svg{display:inline-block;vertical-align:middle}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F0F0F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+    </div>
+    <div>
+      <div class="logo-text">Shop<span>Sync</span></div>
+    </div>
+  </div>
+  <div class="logo-sub">Product Importer v4</div>
+
+  <div class="nav" style="margin-top:16px">
+    <div class="nav-label">Menu</div>
+    <button class="nav-item active" onclick="switchTab('credentials')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2v11m10-11v11M3 13h18M12 13v8m-4 0h8"/></svg>
+      Credentials
+    </button>
+    <button class="nav-item" onclick="switchTab('settings')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Settings
+    </button>
+    <button class="nav-item" onclick="switchTab('collections')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+      Collections
+      <span class="nav-badge" id="col-badge" style="display:none">0</span>
+    </button>
+    <button class="nav-item" onclick="switchTab('console')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      Console
+    </button>
+  </div>
+
+  <div class="stats-box">
+    <div class="stats-label">Session Stats</div>
+    <div class="stat-row"><span class="stat-name">Imported</span><span class="stat-val" id="s-imported" style="color:#C8FF00">0</span></div>
+    <div class="stat-row"><span class="stat-name">Failed</span><span class="stat-val" id="s-failed" style="color:#FF5757">0</span></div>
+    <div class="stat-row"><span class="stat-name">Queued</span><span class="stat-val" id="s-queued" style="color:#8B8BFF">0</span></div>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div>
+      <div class="page-title" id="page-title">Credentials</div>
+      <div class="page-sub">Shopify Product Importer</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div id="conn-badge" style="display:none" class="conn-badge"></div>
+      <div class="topbar-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C8FF00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- Credentials Tab -->
+    <div id="tab-credentials" class="tab-pane active">
+      <div class="banner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a8d600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <p class="banner-text"><strong>Shopify Dev Dashboard</strong> → your app → Settings → copy <strong>Client ID</strong> and <strong>Client Secret</strong>. Required scopes: <code>write_products</code> <code>read_products</code></p>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="sec-head">
+            <div class="sec-left">
+              <div class="sec-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a8d600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2v11m10-11v11M3 13h18M12 13v8m-4 0h8"/></svg></div>
+              <div><div class="sec-title">Store Connection</div><div class="sec-desc">Your Shopify app credentials</div></div>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div>
+              <label class="field-label">Store Name</label>
+              <input type="text" id="f-store" placeholder="your-store-name">
+              <div class="field-hint">Without .myshopify.com</div>
+            </div>
+            <div>
+              <label class="field-label">Client ID</label>
+              <input type="text" id="f-cid" placeholder="f512290159371af01...">
+              <div class="field-hint">Dev Dashboard → Settings</div>
+            </div>
+            <div>
+              <label class="field-label">Client Secret</label>
+              <input type="password" id="f-secret" placeholder="••••••••••••">
+              <div class="field-hint">Keep this private</div>
+            </div>
+          </div>
+          <hr class="divider">
+          <div style="display:flex;align-items:center;gap:16px">
+            <button class="btn btn-dark" id="btn-test" onclick="testConn()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2v11m10-11v11M3 13h18M12 13v8m-4 0h8"/></svg>
+              Test Connection
+            </button>
+            <span id="conn-msg" style="font-size:13px;font-weight:500"></span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="sec-head">
+            <div class="sec-left">
+              <div class="sec-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a8d600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+              <div><div class="sec-title">Setup Steps</div><div class="sec-desc">One-time setup from Shopify Dev Dashboard</div></div>
+            </div>
+          </div>
+          <div class="grid-2" style="gap:10px">
+            <div class="step-card"><div class="step-num">1</div><div><div class="step-t">Open Dev Dashboard</div><div class="step-d">partners.shopify.com → your app</div></div></div>
+            <div class="step-card"><div class="step-num">2</div><div><div class="step-t">Go to Settings</div><div class="step-d">Sidebar → Settings → Credentials</div></div></div>
+            <div class="step-card"><div class="step-num">3</div><div><div class="step-t">Copy Credentials</div><div class="step-d">Copy Client ID and reveal Client Secret</div></div></div>
+            <div class="step-card"><div class="step-num">4</div><div><div class="step-t">Install on Store</div><div class="step-d">App must be installed on your store</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div id="tab-settings" class="tab-pane">
+      <div class="card">
+        <div class="card-body">
+          <div class="sec-head">
+            <div class="sec-left">
+              <div class="sec-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a8d600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div>
+              <div><div class="sec-title">Product Settings</div><div class="sec-desc">Applied to every imported product</div></div>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div>
+              <label class="field-label">Vendor / Brand</label>
+              <input type="text" id="f-vendor" value="My Fashion Store" placeholder="My Fashion Store">
+            </div>
+            <div>
+              <label class="field-label">Product Type</label>
+              <input type="text" id="f-type" value="Fashion" placeholder="Fashion">
+            </div>
+            <div>
+              <label class="field-label">Import Status</label>
+              <select id="f-status">
+                <option value="draft">Draft — review first</option>
+                <option value="active">Active — publish immediately</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="sec-head">
+            <div class="sec-left">
+              <div class="sec-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a8d600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+              <div><div class="sec-title">Status Guide</div></div>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="status-card active-s"><div class="status-card-t">Draft (Recommended)</div><div class="status-card-d">Products hidden until you review and publish. Safest option for bulk imports.</div></div>
+            <div class="status-card plain"><div class="status-card-t">Active</div><div class="status-card-d">Products go live immediately. Use only when source data is fully verified.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Collections Tab -->
+    <div id="tab-collections" class="tab-pane">
+      <div class="card">
+        <div class="card-body">
+          <div class="sec-head">
+            <div class="sec-left">
+              <div class="sec-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a8d600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg></div>
+              <div><div class="sec-title">Import Collections</div><div class="sec-desc">Each row = one collection to scrape</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="ready-count" style="font-size:12px;color:var(--mute)">0 ready</span>
+              <button class="btn btn-primary btn-sm" onclick="addRow()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16m8-8H4"/></svg>
+                Add Row
+              </button>
+            </div>
+          </div>
+          <div id="col-list"></div>
+          <button class="add-row-btn" onclick="addRow()">+ Add another collection</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="sec-head">
+            <div class="sec-left">
+              <div class="sec-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a8d600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+              <div><div class="sec-title">Keyword Reference</div><div class="sec-desc">Find it by opening any product URL on the site</div></div>
+            </div>
+          </div>
+          <div class="grid-4">
+            <div style="padding:12px;background:var(--smoke);border-radius:12px"><div style="font-size:12px;font-weight:600">drip-shop.net</div><code style="display:block;margin:4px 0;color:var(--lime-d)">/produkt/</code><div style="font-size:11px;color:var(--mute)">WooCommerce DE</div></div>
+            <div style="padding:12px;background:var(--smoke);border-radius:12px"><div style="font-size:12px;font-weight:600">maison-luxe.shop</div><code style="display:block;margin:4px 0;color:var(--lime-d)">/product/</code><div style="font-size:11px;color:var(--mute)">WooCommerce standard</div></div>
+            <div style="padding:12px;background:var(--smoke);border-radius:12px"><div style="font-size:12px;font-weight:600">Any Shopify store</div><code style="display:block;margin:4px 0;color:var(--lime-d)">/products/</code><div style="font-size:11px;color:var(--mute)">Shopify standard</div></div>
+            <div style="padding:12px;background:var(--smoke);border-radius:12px"><div style="font-size:12px;font-weight:600">Unknown site</div><code style="display:block;margin:4px 0;color:var(--lime-d)">(blank)</code><div style="font-size:11px;color:var(--mute)">Auto-detects pattern</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Console Tab -->
+    <div id="tab-console" class="tab-pane">
+      <div class="summary" id="summary">
+        <div class="sum-card green"><div class="sum-label">Imported</div><div class="sum-val" id="sum-ok">0</div></div>
+        <div class="sum-card red"><div class="sum-label">Failed</div><div class="sum-val" id="sum-fail">0</div></div>
+        <div class="sum-card dark"><div class="sum-label">Collections</div><div class="sum-val" id="sum-cols">0</div></div>
+      </div>
+
+      <div class="import-bar">
+        <div>
+          <div class="import-bar-t">Start Import</div>
+          <div class="import-bar-d" id="imp-status">Connect your store and add collections first</div>
+        </div>
+        <button class="btn btn-primary btn-lg" id="btn-import" onclick="startImport()" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Start Import
+        </button>
+      </div>
+
+      <div id="prog-bars" style="display:none" class="card" style="padding:20px">
+        <div class="card-body" id="prog-bars-inner"></div>
+      </div>
+
+      <div class="failed-panel" id="failed-panel">
+        <div class="card">
+          <div class="card-body">
+            <div class="sec-head">
+              <div class="sec-left">
+                <div class="sec-icon" style="background:#fef2f2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6M6 6l12 12"/></svg></div>
+                <div><div class="sec-title">Failed Products</div><div class="sec-desc" id="failed-desc">0 products could not be imported</div></div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="retryFailed()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                Retry All
+              </button>
+            </div>
+            <div id="failed-list" style="max-height:200px;overflow-y:auto"></div>
+            <div class="failed-warn">⚠️ Most failures are timeouts. Retrying usually recovers 70–80% of failed products.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="console-wrap">
+        <div class="console-bar">
+          <div class="console-live"><div class="live-dot" id="live-dot"></div>Live Console</div>
+          <button class="console-clear" onclick="clearConsole()">Clear</button>
+        </div>
+        <div class="console-out" id="console-out">
+          <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#3a3a3a">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px;opacity:.4"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <span style="font-size:12px;color:#6B6B6B">Waiting to start…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Progress Panel -->
+<div id="progress-panel">
+  <div class="pp-head">
+    <span class="pp-label">Import Progress</span>
+    <span class="pp-live" id="pp-live" style="display:none">
+      <span style="width:6px;height:6px;border-radius:50%;background:#a8d600;animation:blink 1.2s ease infinite;display:inline-block"></span>
+      LIVE
+    </span>
+  </div>
+  <div class="pp-body">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+      <div class="ring-wrap">
+        <svg width="64" height="64" viewBox="0 0 64 64" style="transform:rotate(-90deg)">
+          <circle cx="32" cy="32" r="28" fill="none" stroke="#EBEBEA" stroke-width="5"/>
+          <circle id="ring-circle" cx="32" cy="32" r="28" fill="none" stroke="#C8FF00" stroke-width="5" stroke-linecap="round"
+            stroke-dasharray="175.9" stroke-dashoffset="175.9"
+            style="transition:stroke-dashoffset .5s ease;filter:drop-shadow(0 0 4px rgba(200,255,0,.5))"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700" id="ring-pct">0%</div>
+      </div>
+      <div class="ring-info">
+        <div class="ring-num" id="ring-done">0</div>
+        <div class="ring-sub">of <span id="ring-total">0</span> products</div>
+        <div class="ring-tags">
+          <span class="tag green" id="tag-done">0 done</span>
+          <span class="tag red" id="tag-fail" style="display:none">0 failed</span>
+        </div>
+      </div>
+    </div>
+    <div id="pp-cols"></div>
+    <div id="last-box" style="display:none" class="last-box">
+      <div class="last-lbl">Last Imported</div>
+      <div class="last-title" id="last-title"></div>
+      <div class="last-meta">
+        <span class="last-price" id="last-price"></span>
+        <span class="last-was" id="last-was" style="display:none"></span>
+        <span style="margin-left:auto;font-size:11px;color:var(--mute)" id="last-imgs"></span>
+      </div>
+    </div>
+    <div id="complete-box" style="display:none" class="complete-box">
+      <div class="complete-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F0F0F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+      </div>
+      <div class="complete-t">Import Complete!</div>
+      <div class="complete-d" id="complete-d"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────
+// Change this to your Render URL after deploying
+const API = 'https://shop-sync-i83z.onrender.com';
+
+// ── State ────────────────────────────────────────────────────
+let rowId   = 1;
+let rows    = [];
+let stats   = {success:0, fail:0};
+let progress= {};
+let failed  = [];
+let busy    = false;
+let connOk  = false;
+const titles= {credentials:'Credentials',settings:'Settings',collections:'Collections',console:'Import Console'};
+
+// ── Tab switching ─────────────────────────────────────────────
+function switchTab(id) {
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  document.querySelectorAll('.nav-item')[['credentials','settings','collections','console'].indexOf(id)].classList.add('active');
+  document.getElementById('page-title').textContent = titles[id];
+  checkReady();
+}
+
+// ── Load/save creds ───────────────────────────────────────────
+(function loadCreds() {
+  try {
+    const c = JSON.parse(localStorage.getItem('ss_creds')||'{}');
+    if(c.store)  document.getElementById('f-store').value  = c.store;
+    if(c.cid)    document.getElementById('f-cid').value    = c.cid;
+    if(c.secret) document.getElementById('f-secret').value = c.secret;
+  } catch(e){}
+  addRow(); // add one empty row
+})();
+
+function saveCreds() {
+  localStorage.setItem('ss_creds', JSON.stringify({
+    store:  document.getElementById('f-store').value,
+    cid:    document.getElementById('f-cid').value,
+    secret: document.getElementById('f-secret').value,
+  }));
+}
+['f-store','f-cid','f-secret'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{ saveCreds(); checkReady(); }));
+
+// ── Test connection ───────────────────────────────────────────
+async function testConn() {
+  const btn = document.getElementById('btn-test');
+  const msg = document.getElementById('conn-msg');
+  btn.innerHTML = '<span class="spinner"></span> Testing…';
+  btn.disabled  = true;
+  msg.textContent = '';
+  try {
+    const r = await fetch(API+'/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({store:V('f-store'),clientId:V('f-cid'),clientSecret:V('f-secret')})});
+    const d = await r.json();
+    if(d.ok) {
+      connOk = true;
+      msg.style.color = '#a8d600';
+      msg.textContent = '✅ Connected to "'+d.shopName+'"';
+      showConnBadge(true, d.shopName);
+    } else {
+      connOk = false;
+      msg.style.color = '#ef4444';
+      msg.textContent = '❌ '+d.error;
+      showConnBadge(false,'');
+    }
+  } catch(e) {
+    msg.style.color='#ef4444';
+    msg.textContent='❌ Cannot reach backend — check Render deployment';
+  }
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2v11m10-11v11M3 13h18M12 13v8m-4 0h8"/></svg> Test Connection';
+  btn.disabled = false;
+  checkReady();
+}
+
+function showConnBadge(ok, name) {
+  const b = document.getElementById('conn-badge');
+  b.style.display='flex';
+  b.className='conn-badge '+(ok?'ok':'err');
+  b.innerHTML='<span class="conn-dot"></span>'+(ok?'Connected · '+name:'Not connected');
+}
+
+// ── Collection rows ───────────────────────────────────────────
+function addRow() {
+  const id = rowId++;
+  rows.push({id,url:'',keyword:'',collection:''});
+  renderRows();
+}
+
+function delRow(id) {
+  rows = rows.filter(r=>r.id!==id);
+  renderRows();
+}
+
+function updateRow(id, field, val) {
+  const r = rows.find(r=>r.id===id);
+  if(r) r[field]=val;
+  updateColBadge();
+  checkReady();
+}
+
+function renderRows() {
+  const list = document.getElementById('col-list');
+  list.innerHTML = rows.map((r,i)=>`
+    <div class="col-row" id="row-${r.id}">
+      <div class="row-num">${i+1}</div>
+      <div class="row-field grow">
+        <div class="field-label" style="font-size:10px;margin-bottom:4px">Collection URL</div>
+        <input class="row-input" placeholder="https://store.com/category/brand/" value="${esc(r.url)}" oninput="updateRow(${r.id},'url',this.value)">
+      </div>
+      <div class="row-field w36">
+        <div class="field-label" style="font-size:10px;margin-bottom:4px">Keyword</div>
+        <input class="row-input" placeholder="/product/ or blank" value="${esc(r.keyword)}" style="font-family:'DM Mono','Courier New',monospace;font-size:11px" oninput="updateRow(${r.id},'keyword',this.value)">
+      </div>
+      <div class="row-field w40">
+        <div class="field-label" style="font-size:10px;margin-bottom:4px">Shopify Collection</div>
+        <input class="row-input" placeholder="e.g. Golden Goose" value="${esc(r.collection)}" oninput="updateRow(${r.id},'collection',this.value)">
+      </div>
+      <button class="row-del" onclick="delRow(${r.id})">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      </button>
+    </div>
+  `).join('');
+  updateColBadge();
+  checkReady();
+}
+
+function updateColBadge() {
+  const valid = rows.filter(r=>r.url.trim()&&r.collection.trim());
+  const badge = document.getElementById('col-badge');
+  const rc    = document.getElementById('ready-count');
+  document.getElementById('s-queued').textContent = valid.length;
+  if(valid.length>0) { badge.style.display='inline'; badge.textContent=valid.length; } else badge.style.display='none';
+  if(rc) rc.textContent = valid.length+' ready';
+}
+
+// ── Ready check ───────────────────────────────────────────────
+function checkReady() {
+  const valid = rows.filter(r=>r.url.trim()&&r.collection.trim());
+  const ok    = V('f-store')&&V('f-cid')&&V('f-secret')&&valid.length>0&&!busy;
+  const btn   = document.getElementById('btn-import');
+  const msg   = document.getElementById('imp-status');
+  btn.disabled = !ok;
+  msg.textContent = ok ? 'Ready — click to begin importing' : 'Connect your store and add collections first';
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function V(id){ return document.getElementById(id).value.trim(); }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+function now(){ return new Date().toLocaleTimeString('en-GB',{hour12:false}); }
+
+// ── Console logging ───────────────────────────────────────────
+let consoleEmpty = true;
+function addLog(msg, type='info') {
+  const out = document.getElementById('console-out');
+  if(consoleEmpty) { out.innerHTML=''; consoleEmpty=false; }
+  const d = document.createElement('div');
+  d.className='log-line log-'+type;
+  d.innerHTML='<span class="log-time">'+now()+'</span>'+msg;
+  out.appendChild(d);
+  out.scrollTop = out.scrollHeight;
+}
+
+function clearConsole() {
+  document.getElementById('console-out').innerHTML='<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#3a3a3a"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px;opacity:.4"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg><span style="font-size:12px;color:#6B6B6B">Waiting to start…</span></div>';
+  consoleEmpty=true;
+}
+
+// ── Progress panel ────────────────────────────────────────────
+function showPanel() { document.getElementById('progress-panel').classList.add('show'); }
+
+function updatePanel() {
+  const total = Object.values(progress).reduce((s,p)=>s+p.total,0);
+  const done  = Object.values(progress).reduce((s,p)=>s+p.done,0);
+  const pct   = total>0 ? Math.round(done/total*100) : 0;
+  const C=175.9, off=C-(pct/100)*C;
+
+  document.getElementById('ring-circle').setAttribute('stroke-dashoffset',off);
+  document.getElementById('ring-pct').textContent=pct+'%';
+  document.getElementById('ring-done').textContent=done;
+  document.getElementById('ring-total').textContent=total;
+  document.getElementById('tag-done').textContent=stats.success+' done';
+  if(stats.fail>0){ document.getElementById('tag-fail').style.display=''; document.getElementById('tag-fail').textContent=stats.fail+' failed'; }
+
+  const colsEl = document.getElementById('pp-cols');
+  colsEl.innerHTML = Object.entries(progress).map(([name,p])=>{
+    const pc  = p.total>0?Math.round(p.done/p.total*100):0;
+    const fin = pc===100;
+    return `<div class="pp-col">
+      <div class="pp-col-head">
+        <div class="pp-col-name">
+          ${fin
+            ? '<div class="col-check"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0F0F0F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></div>'
+            : '<div class="col-spinner"></div>'
+          }
+          <span>${name}</span>
+        </div>
+        <span class="pp-col-count">${p.done}/${p.total}</span>
+      </div>
+      <div class="pp-track">
+        <div class="pp-fill ${fin?'done':'running'}" style="width:${pc}%"></div>
+      </div>
+      <div class="pp-pct"><span>${pc}%</span>${fin?'<span class="done-text">Complete ✓</span>':''}</div>
+    </div>`;
+  }).join('');
+}
+
+function setLast(d) {
+  const b=document.getElementById('last-box');
+  b.style.display='block';
+  document.getElementById('last-title').textContent=d.title;
+  document.getElementById('last-price').textContent=d.price||'';
+  const w=document.getElementById('last-was');
+  if(d.compare){ w.style.display=''; w.textContent=d.compare; } else w.style.display='none';
+  document.getElementById('last-imgs').textContent='🖼 '+d.images;
+}
+
+function setBusy(b) {
+  busy=b;
+  const btn=document.getElementById('btn-import');
+  const dot=document.getElementById('live-dot');
+  const pp=document.getElementById('pp-live');
+  if(b){
+    btn.innerHTML='<span class="spinner"></span> Importing…';
+    dot.classList.add('active'); pp.style.display='flex';
+  } else {
+    btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Start Import';
+    dot.classList.remove('active'); pp.style.display='none';
+  }
+  checkReady();
+}
+
+// ── Update progress bars in console tab ──────────────────────
+function updateProgBars() {
+  const wrap  = document.getElementById('prog-bars');
+  const inner = document.getElementById('prog-bars-inner');
+  if(!Object.keys(progress).length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  inner.innerHTML = Object.entries(progress).map(([name,p])=>{
+    const pc=p.total>0?Math.round(p.done/p.total*100):0;
+    return `<div class="prog-row">
+      <div class="prog-info"><span class="prog-name">${name}</span><span class="prog-count">${p.done}/${p.total} · ${pc}%</span></div>
+      <div class="prog-track"><div class="prog-fill" style="width:${pc}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── Process event ─────────────────────────────────────────────
+function processEvent(event, data) {
+  if(event==='collection_start'){
+    addLog('━━ ['+(data.index+1)+'/'+data.total+'] "'+data.name+'"','section');
+    addLog('   '+data.url,'info');
+  } else if(event==='collection_urls'){
+    if(!progress[data.name]) progress[data.name]={done:0,total:0};
+    progress[data.name].total = data.count;
+    updatePanel(); updateProgBars();
+    addLog('🔗 '+data.count+' products found','info');
+  } else if(event==='log'){
+    addLog(data.msg, data.type||'info');
+  } else if(event==='product_start'){
+    addLog('  ['+(data.index+1)+'/'+data.total+'] '+data.url,'info');
+  } else if(event==='product_done'){
+    if(data.ok){
+      const c=data.compare?' · Was: '+data.compare:'';
+      addLog('  ✅ "'+data.title+'" · '+data.price+c+' · 🖼 '+data.images+' · vars:'+data.variants,'success');
+      if(!progress[data.collection]) progress[data.collection]={done:0,total:0};
+      progress[data.collection].done++;
+      stats.success++;
+      document.getElementById('s-imported').textContent=stats.success;
+      setLast(data);
+      updatePanel(); updateProgBars();
+    } else {
+      addLog('  ⚠️ Skipped: '+data.error,'warn');
+      stats.fail++;
+      document.getElementById('s-failed').textContent=stats.fail;
+      failed.push(data);
+      updatePanel();
+    }
+  } else if(event==='collection_done'){
+    addLog('✅ "'+data.name+'" — '+data.success+' imported, '+data.fail+' failed','done');
+  } else if(event==='import_done'){
+    addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━','section');
+    addLog('⚡ COMPLETE — '+data.total_success+' imported, '+data.total_fail+' failed','done');
+    const valid=rows.filter(r=>r.url.trim()&&r.collection.trim());
+    document.getElementById('summary').classList.add('show');
+    document.getElementById('sum-ok').textContent=stats.success;
+    document.getElementById('sum-fail').textContent=stats.fail;
+    document.getElementById('sum-cols').textContent=valid.length;
+    document.getElementById('complete-box').style.display='';
+    document.getElementById('complete-d').textContent=stats.success+' products added to your store';
+    if(failed.length>0) renderFailed();
+  } else if(event==='error'){
+    addLog('❌ '+data.msg,'error');
+  }
+}
+
+function renderFailed() {
+  const panel=document.getElementById('failed-panel');
+  const list =document.getElementById('failed-list');
+  const desc =document.getElementById('failed-desc');
+  panel.classList.add('show');
+  desc.textContent=failed.length+' product(s) could not be imported';
+  list.innerHTML=failed.map(f=>`
+    <div class="failed-item">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      <div style="min-width:0">
+        <div class="failed-url">${f.url||''}</div>
+        <div class="failed-meta">${f.collection||''} · ${f.error||''}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Poll job ──────────────────────────────────────────────────
+async function pollJob(jobId) {
+  let cursor=0;
+  while(true){
+    await new Promise(r=>setTimeout(r,1500));
+    try {
+      const r=await fetch(API+'/api/poll/'+jobId+'?cursor='+cursor);
+      const d=await r.json();
+      for(const {event,data} of d.events) processEvent(event,data);
+      cursor=d.cursor;
+      if(d.done) break;
+    } catch(e){
+      addLog('⚠️ Poll hiccup — retrying…','warn');
+      await new Promise(r=>setTimeout(r,3000));
+    }
+  }
+}
+
+// ── Start import ──────────────────────────────────────────────
+async function startImport() {
+  const valid=rows.filter(r=>r.url.trim()&&r.collection.trim());
+  if(!valid.length||busy) return;
+  setBusy(true); consoleEmpty=true;
+  clearConsole(); failed=[]; stats={success:0,fail:0}; progress={};
+  document.getElementById('summary').classList.remove('show');
+  document.getElementById('failed-panel').classList.remove('show');
+  document.getElementById('prog-bars').style.display='none';
+  document.getElementById('complete-box').style.display='none';
+  document.getElementById('last-box').style.display='none';
+  document.getElementById('s-imported').textContent='0';
+  document.getElementById('s-failed').textContent='0';
+  switchTab('console');
+  showPanel();
+  const ip={}; valid.forEach(r=>{ ip[r.collection]={done:0,total:0}; }); progress=ip;
+  document.getElementById('pp-live').style.display='flex';
+  addLog('⚡ Starting import…','section');
+  try {
+    const r=await fetch(API+'/api/import',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({store:V('f-store'),clientId:V('f-cid'),clientSecret:V('f-secret'),
+        vendor:V('f-vendor')||'My Fashion Store',productType:V('f-type')||'Fashion',status:V('f-status')||'draft',
+        collections:valid.map(r=>({url:r.url,keyword:r.keyword,collection:r.collection}))})});
+    const d=await r.json();
+    if(!d.ok) throw new Error(d.error||'Failed to start');
+    await pollJob(d.jobId);
+  } catch(e){
+    addLog('❌ '+e.message,'error');
+    addLog('Check your Render deployment and API URL.','warn');
+  }
+  setBusy(false);
+}
+
+// ── Retry failed ──────────────────────────────────────────────
+async function retryFailed() {
+  if(!failed.length||busy) return;
+  const toRetry=[...failed]; failed=[]; setBusy(true);
+  document.getElementById('failed-panel').classList.remove('show');
+  const grouped={};
+  toRetry.forEach(f=>{ if(!grouped[f.collection]) grouped[f.collection]={urls:[],keyword:''}; grouped[f.collection].urls.push(f.url); });
+  const ip={}; Object.keys(grouped).forEach(k=>{ ip[k+' (retry)']={done:0,total:grouped[k].urls.length}; });
+  Object.assign(progress,ip); updatePanel(); updateProgBars();
+  addLog('🔄 Retrying '+toRetry.length+' failed products…','section');
+  try {
+    const r=await fetch(API+'/api/retry',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({store:V('f-store'),clientId:V('f-cid'),clientSecret:V('f-secret'),
+        vendor:V('f-vendor')||'My Fashion Store',productType:V('f-type')||'Fashion',status:V('f-status')||'draft',
+        collections:Object.entries(grouped).map(([col,g])=>({collection:col,urls:g.urls,keyword:g.keyword,url:'',isRetry:true}))})});
+    const d=await r.json();
+    if(!d.ok) throw new Error(d.error||'Retry start failed');
+    await pollJob(d.jobId);
+  } catch(e){
+    addLog('❌ Retry error: '+e.message,'error');
+  }
+  setBusy(false);
+  if(failed.length>0) renderFailed();
+}
+
+checkReady();
+</script>
+</body>
+</html>
