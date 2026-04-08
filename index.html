@@ -124,6 +124,13 @@ code{background:var(--smoke2);padding:2px 5px;border-radius:5px;font-size:11px;f
 .row-del:hover{color:var(--red);background:#fef2f2}
 .add-row-btn{width:100%;padding:10px;border:2px dashed var(--smoke3);border-radius:14px;background:none;color:var(--mute);font-size:12px;cursor:pointer;transition:all .15s;margin-top:4px}
 .add-row-btn:hover{border-color:var(--lime);color:var(--lime-d);background:rgba(200,255,0,.05)}
+/* Vendor tag in row */
+.row-vendor-hint{font-size:10px;color:var(--lime-d);margin-top:3px;min-height:14px;transition:all .2s}
+/* Pause button */
+.btn-pause{background:var(--smoke);border:1px solid var(--smoke3);color:var(--ink);font-weight:600;padding:12px 18px;border-radius:14px;font-size:14px;cursor:pointer;display:none;align-items:center;gap:8px;transition:all .15s}
+.btn-pause:hover{background:var(--smoke2);border-color:var(--mute-l)}
+.btn-pause.paused{background:var(--lime);border-color:var(--lime);color:var(--ink)}
+.btn-pause.show{display:inline-flex}
 
 /* ── Status guide ── */
 .status-card{padding:16px;border-radius:14px}
@@ -367,7 +374,8 @@ svg{display:inline-block;vertical-align:middle}
           <div class="grid-3">
             <div>
               <label class="field-label">Vendor / Brand</label>
-              <input type="text" id="f-vendor" value="My Fashion Store" placeholder="My Fashion Store">
+              <input type="text" id="f-vendor" placeholder="e.g. My Fashion Store">
+              <div class="field-hint">Universal fallback — used when collection row vendor is blank</div>
             </div>
             <div>
               <label class="field-label">Product Type</label>
@@ -448,13 +456,19 @@ svg{display:inline-block;vertical-align:middle}
 
       <div class="import-bar">
         <div>
-          <div class="import-bar-t">Start Import</div>
+          <div class="import-bar-t" id="import-bar-title">Start Import</div>
           <div class="import-bar-d" id="imp-status">Connect your store and add collections first</div>
         </div>
-        <button class="btn btn-primary btn-lg" id="btn-import" onclick="startImport()" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          Start Import
-        </button>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="btn-pause" id="btn-pause" onclick="togglePause()">
+            <svg id="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+            <span id="pause-label">Pause</span>
+          </button>
+          <button class="btn btn-primary btn-lg" id="btn-import" onclick="startImport()" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Start Import
+          </button>
+        </div>
       </div>
 
       <div id="prog-bars" style="display:none" class="card" style="padding:20px">
@@ -558,6 +572,7 @@ let stats   = {success:0, fail:0};
 let progress= {};
 let failed  = [];
 let busy    = false;
+let paused  = false;
 let connOk  = false;
 const titles= {credentials:'Credentials',settings:'Settings',collections:'Collections',console:'Import Console'};
 
@@ -632,7 +647,7 @@ function showConnBadge(ok, name) {
 // ── Collection rows ───────────────────────────────────────────
 function addRow() {
   const id = rowId++;
-  rows.push({id,url:'',keyword:'',collection:''});
+  rows.push({id,url:'',keyword:'',collection:'',vendor:''});
   renderRows();
 }
 
@@ -664,6 +679,10 @@ function renderRows() {
       <div class="row-field w40">
         <div class="field-label" style="font-size:10px;margin-bottom:4px">Shopify Collection</div>
         <input class="row-input" placeholder="e.g. Golden Goose" value="${esc(r.collection)}" oninput="updateRow(${r.id},'collection',this.value)">
+      </div>
+      <div class="row-field w36">
+        <div class="field-label" style="font-size:10px;margin-bottom:4px">Vendor / Brand</div>
+        <input class="row-input" placeholder="Blank = Settings" value="${esc(r.vendor||'')}" oninput="updateRow(${r.id},'vendor',this.value)">
       </div>
       <button class="row-del" onclick="delRow(${r.id})">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -732,7 +751,8 @@ function updatePanel() {
   if(stats.fail>0){ document.getElementById('tag-fail').style.display=''; document.getElementById('tag-fail').textContent=stats.fail+' failed'; }
 
   const colsEl = document.getElementById('pp-cols');
-  colsEl.innerHTML = Object.entries(progress).map(([name,p])=>{
+  colsEl.innerHTML = Object.entries(progress).map(([key,p])=>{
+    const name = p.displayName || key;
     const pc  = p.total>0?Math.round(p.done/p.total*100):0;
     const fin = pc===100;
     return `<div class="pp-col">
@@ -766,17 +786,49 @@ function setLast(d) {
 
 function setBusy(b) {
   busy=b;
-  const btn=document.getElementById('btn-import');
-  const dot=document.getElementById('live-dot');
-  const pp=document.getElementById('pp-live');
+  const btn   = document.getElementById('btn-import');
+  const dot   = document.getElementById('live-dot');
+  const pp    = document.getElementById('pp-live');
+  const pBtn  = document.getElementById('btn-pause');
+  const title = document.getElementById('import-bar-title');
   if(b){
     btn.innerHTML='<span class="spinner"></span> Importing…';
-    dot.classList.add('active'); pp.style.display='flex';
+    btn.disabled=true;
+    dot.classList.add('active');
+    pp.style.display='flex';
+    pBtn.classList.add('show');
+    if(title) title.textContent='Import Running';
   } else {
     btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Start Import';
-    dot.classList.remove('active'); pp.style.display='none';
+    dot.classList.remove('active');
+    pp.style.display='none';
+    pBtn.classList.remove('show');
+    pBtn.classList.remove('paused');
+    paused=false;
+    if(title) title.textContent='Start Import';
+    checkReady();
   }
-  checkReady();
+}
+
+function togglePause() {
+  const pBtn  = document.getElementById('btn-pause');
+  const icon  = document.getElementById('pause-icon');
+  const label = document.getElementById('pause-label');
+  const title = document.getElementById('import-bar-title');
+  paused = !paused;
+  if(paused){
+    pBtn.classList.add('paused');
+    icon.innerHTML='<path d="M8 5v14l11-7z"/>';
+    label.textContent='Resume';
+    if(title) title.textContent='Import Paused';
+    addLog('⏸ Import paused — will finish current product then stop','warn');
+  } else {
+    pBtn.classList.remove('paused');
+    icon.innerHTML='<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>';
+    label.textContent='Pause';
+    if(title) title.textContent='Import Running';
+    addLog('▶️ Import resumed','info');
+  }
 }
 
 // ── Update progress bars in console tab ──────────────────────
@@ -785,10 +837,11 @@ function updateProgBars() {
   const inner = document.getElementById('prog-bars-inner');
   if(!Object.keys(progress).length){ wrap.style.display='none'; return; }
   wrap.style.display='';
-  inner.innerHTML = Object.entries(progress).map(([name,p])=>{
+  inner.innerHTML = Object.entries(progress).map(([key,p])=>{
     const pc=p.total>0?Math.round(p.done/p.total*100):0;
+    const lbl = p.displayName || key;
     return `<div class="prog-row">
-      <div class="prog-info"><span class="prog-name">${name}</span><span class="prog-count">${p.done}/${p.total} · ${pc}%</span></div>
+      <div class="prog-info"><span class="prog-name">${lbl}</span><span class="prog-count">${p.done}/${p.total} · ${pc}%</span></div>
       <div class="prog-track"><div class="prog-fill" style="width:${pc}%"></div></div>
     </div>`;
   }).join('');
@@ -800,8 +853,9 @@ function processEvent(event, data) {
     addLog('━━ ['+(data.index+1)+'/'+data.total+'] "'+data.name+'"','section');
     addLog('   '+data.url,'info');
   } else if(event==='collection_urls'){
-    if(!progress[data.name]) progress[data.name]={done:0,total:0};
-    progress[data.name].total = data.count;
+    const pk = data.progressKey || data.name;
+    if(!progress[pk]) progress[pk]={done:0,total:0,displayName:data.name};
+    progress[pk].total = data.count;
     updatePanel(); updateProgBars();
     addLog('🔗 '+data.count+' products found','info');
   } else if(event==='log'){
@@ -811,9 +865,11 @@ function processEvent(event, data) {
   } else if(event==='product_done'){
     if(data.ok){
       const c=data.compare?' · Was: '+data.compare:'';
-      addLog('  ✅ "'+data.title+'" · '+data.price+c+' · 🖼 '+data.images+' · vars:'+data.variants,'success');
-      if(!progress[data.collection]) progress[data.collection]={done:0,total:0};
-      progress[data.collection].done++;
+      const vnd = data.vendor ? ' · 🏷 '+data.vendor : '';
+      addLog('  ✅ "'+data.title+'" · '+data.price+c+vnd+' · 🖼 '+data.images+' · vars:'+data.variants,'success');
+      const pk2 = data.progressKey || data.collection;
+      if(!progress[pk2]) progress[pk2]={done:0,total:0,displayName:data.collection};
+      progress[pk2].done++;
       stats.success++;
       document.getElementById('s-imported').textContent=stats.success;
       setLast(data);
@@ -864,6 +920,11 @@ function renderFailed() {
 async function pollJob(jobId) {
   let cursor=0;
   while(true){
+    // If paused — wait until resumed, check every 500ms
+    if(paused){
+      await new Promise(r=>setTimeout(r,500));
+      continue;
+    }
     await new Promise(r=>setTimeout(r,1500));
     try {
       const r=await fetch(API+'/api/poll/'+jobId+'?cursor='+cursor);
@@ -893,14 +954,27 @@ async function startImport() {
   document.getElementById('s-failed').textContent='0';
   switchTab('console');
   showPanel();
-  const ip={}; valid.forEach(r=>{ ip[r.collection]={done:0,total:0}; }); progress=ip;
+  // Use unique key per row — handles multiple rows importing to same collection
+  const ip={};
+  const colCount={};
+  valid.forEach(r=>{
+    colCount[r.collection]=(colCount[r.collection]||0)+1;
+  });
+  const colSeen={};
+  valid.forEach(r=>{
+    colSeen[r.collection]=(colSeen[r.collection]||0)+1;
+    const key = colCount[r.collection]>1 ? r.collection+' #'+colSeen[r.collection] : r.collection;
+    r._progressKey = key;
+    ip[key]={done:0,total:0,displayName:r.collection};
+  });
+  progress=ip;
   document.getElementById('pp-live').style.display='flex';
   addLog('⚡ Starting import…','section');
   try {
     const r=await fetch(API+'/api/import',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({store:V('f-store'),clientId:V('f-cid'),clientSecret:V('f-secret'),
-        vendor:V('f-vendor')||'My Fashion Store',productType:V('f-type')||'Fashion',status:V('f-status')||'draft',
-        collections:valid.map(r=>({url:r.url,keyword:r.keyword,collection:r.collection}))})});
+        vendor:V('f-vendor'),productType:V('f-type')||'Fashion',status:V('f-status')||'draft',
+        collections:valid.map(r=>({url:r.url,keyword:r.keyword,collection:r.collection,vendor:r.vendor||'',progressKey:r._progressKey||r.collection}))})});
     const d=await r.json();
     if(!d.ok) throw new Error(d.error||'Failed to start');
     await pollJob(d.jobId);
@@ -924,7 +998,7 @@ async function retryFailed() {
   try {
     const r=await fetch(API+'/api/retry',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({store:V('f-store'),clientId:V('f-cid'),clientSecret:V('f-secret'),
-        vendor:V('f-vendor')||'My Fashion Store',productType:V('f-type')||'Fashion',status:V('f-status')||'draft',
+        vendor:V('f-vendor'),productType:V('f-type')||'Fashion',status:V('f-status')||'draft',
         collections:Object.entries(grouped).map(([col,g])=>({collection:col,urls:g.urls,keyword:g.keyword,url:'',isRetry:true}))})});
     const d=await r.json();
     if(!d.ok) throw new Error(d.error||'Retry start failed');
