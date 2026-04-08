@@ -367,8 +367,7 @@ svg{display:inline-block;vertical-align:middle}
           <div class="grid-3">
             <div>
               <label class="field-label">Vendor / Brand</label>
-              <input type="text" id="f-vendor" value="" placeholder="Leave blank to auto-detect from site">
-              <div class="field-hint" style="color:#a8d600">Leave blank → vendor auto-detected from each product's site</div>
+              <input type="text" id="f-vendor" value="My Fashion Store" placeholder="My Fashion Store">
             </div>
             <div>
               <label class="field-label">Product Type</label>
@@ -812,8 +811,7 @@ function processEvent(event, data) {
   } else if(event==='product_done'){
     if(data.ok){
       const c=data.compare?' · Was: '+data.compare:'';
-      const vnd = data.vendor ? ' · 🏷 '+data.vendor : '';
-      addLog('  ✅ "'+data.title+'" · '+data.price+c+vnd+' · 🖼 '+data.images+' · vars:'+data.variants,'success');
+      addLog('  ✅ "'+data.title+'" · '+data.price+c+' · 🖼 '+data.images+' · vars:'+data.variants,'success');
       if(!progress[data.collection]) progress[data.collection]={done:0,total:0};
       progress[data.collection].done++;
       stats.success++;
